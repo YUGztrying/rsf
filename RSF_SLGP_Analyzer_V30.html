@@ -5618,7 +5618,11 @@
             
             otherChecksHeaders.forEach(header => {
                 const th = document.createElement('th');
-                const hasIssue = problemColumns.other.has(header);
+                // Consistency with CompQoQ (point 7): when a column filter is active,
+                // highlight ONLY the selected column; otherwise highlight all problem columns.
+                const hasIssue = currentColumnFilter !== ''
+                    ? (header === currentColumnFilter)
+                    : problemColumns.other.has(header);
                 if (hasIssue) {
                     th.className = 'problem-col';
                     th.textContent = header.length > 25 ? '⚠ ' + header.substring(0, 22) + '...' : '⚠ ' + header;
@@ -5668,7 +5672,8 @@
                     const td = document.createElement('td');
                     td.textContent = cell.value;
                     td.title = cell.value;
-                    if (cell.isIssue) {
+                    // Only redden the selected column when filtering (point 7).
+                    if (cell.isIssue && (currentColumnFilter === '' || cell.column === currentColumnFilter)) {
                         td.style.background = 'var(--danger-bg)';
                         td.style.color = 'var(--danger)';
                         td.style.fontWeight = '700';
@@ -5690,8 +5695,9 @@
                     const problemsList = document.createElement('div');
                     problemsList.className = 'problems-list';
                     
-                    const issueCells = row.cells.filter(c => c.isIssue);
-                    
+                    // When a column filter is active, show only that column's card (point 7).
+                    const issueCells = row.cells.filter(c => c.isIssue && (currentColumnFilter === '' || c.column === currentColumnFilter));
+
                     issueCells.forEach(issueCell => {
                         const issueColumn = issueCell.column;
                         const key = `${row.excelRow}-othercheck-${issueColumn}`;
