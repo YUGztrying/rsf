@@ -2293,6 +2293,16 @@
             return -1;
         }
 
+        // The arrears-days fields ("# Jours de retard de paiement" and "Date du premier
+        // paiement manqué") legitimately change every quarter, so the QoQ check flags
+        // them perpetually and the "Rétablir" suggestion would wrongly propose reverting
+        // to last quarter's day count. The dedicated DATES check owns these fields, so we
+        // exclude them from QoQ to remove that noise.
+        function isArrearsOwnedColumn(name) {
+            const n = looseNorm(name);
+            return n.includes('jours de retard') || n.includes('premier paiement manque');
+        }
+
         function columnMatches(headerName, columnList) {
             const normalizedHeader = normalizeColumnName(headerName);
             return columnList.some(col => normalizeColumnName(col) === normalizedHeader);
@@ -2915,6 +2925,8 @@
                             const logicalIdx = colIndex - qoqOffset;
                             if (logicalIdx < 0) return;
                             const columnName = currentQReportHeaders[logicalIdx] || headers[colIndex] || `Column ${colIndex + 1}`;
+                            // Skip arrears-days fields — the DATES check owns them (point 6).
+                            if (isArrearsOwnedColumn(columnName)) return;
                             problemColumns.qoq.add(columnName);
                             if (!issuesByType.qoq.has(excelRow)) issuesByType.qoq.set(excelRow, []);
                             issuesByType.qoq.get(excelRow).push({ column: columnName, value: cell, colIndex: logicalIdx });
@@ -2947,10 +2959,18 @@
                     const cell = row[colIndex];
                     const cellStr = cell !== null && cell !== undefined ? cell.toString().trim() : '';
                     const cellUpper = cellStr.toUpperCase();
-                    const isIssue = cellUpper === 'ISSUE' || cellUpper === 'FALSE' || cellUpper === 'NON' || 
-                                   cellUpper === 'NO' || cellUpper === 'KO' || cellUpper === 'FAIL' || 
+                    let isIssue = cellUpper === 'ISSUE' || cellUpper === 'FALSE' || cellUpper === 'NON' ||
+                                   cellUpper === 'NO' || cellUpper === 'KO' || cellUpper === 'FAIL' ||
                                    cellUpper === 'ERROR' || cellUpper.includes('ISSUE') || cellUpper.includes('ERROR');
-                    
+
+                    // Consolidate the DATES ↔ OtherChecks duplicate (point 8): the arrears-days
+                    // mismatch is flagged both here and by the dedicated DATES check. Suppress
+                    // it here so it's handled only in the DATES tab (which can recompute and
+                    // correct it inline), avoiding the same error appearing in two tabs.
+                    // NB: matches by header text; if your OtherChecks column is purely coded
+                    // (e.g. "c29"), add its exact header to isArrearsOwnedColumn().
+                    if (isIssue && isArrearsOwnedColumn(header)) isIssue = false;
+
                     rowData.cells.push({ value: cellStr, isIssue, colIndex, column: header });
                     
                     if (isIssue) {
@@ -6206,12 +6226,17 @@
             body.style.cssText = 'padding:10px 18px;overflow-y:auto;flex:1;';
             const skip = new Set([nomH, rangH, idH].filter(Boolean));
             const inputs = [];
+            // Previous-quarter facility for this borrower (point 5): lets us surface the
+            // prior value next to each field so the analyst doesn't have to dig back into
+            // the file, with one click to reuse it.
+            const prevFacility = (idH && facility[idH] != null) ? prevQuarterLookup.get(facility[idH].toString()) : null;
+            const prevLabel = previousQuarterSheetName || 'Q-1';
             currentQReportHeaders.forEach(col => {
                 if (!col || skip.has(col)) return;
                 const r = document.createElement('div');
-                r.style.cssText = 'display:flex;align-items:center;gap:10px;padding:5px 0;border-bottom:1px solid #f0f0f0;';
+                r.style.cssText = 'display:flex;align-items:center;gap:10px;padding:5px 0;border-bottom:1px solid #f0f0f0;flex-wrap:wrap;';
                 const lab = document.createElement('label');
-                lab.style.cssText = 'flex:1;font-size:12px;color:#374151;line-height:1.25;';
+                lab.style.cssText = 'flex:1;min-width:160px;font-size:12px;color:#374151;line-height:1.25;';
                 lab.textContent = col.replace(/\s+/g, ' ').trim();
                 lab.title = col;
                 const inp = document.createElement('input');
@@ -6222,6 +6247,17 @@
                 inp.style.cssText = 'width:200px;font-size:12px;padding:5px 8px;border:1px solid #d1d5db;border-radius:4px;flex:0 0 auto;';
                 inputs.push(inp);
                 r.appendChild(lab); r.appendChild(inp);
+                // Previous-quarter hint + one-click reuse, only when it differs from current.
+                const prevVal = (prevFacility && prevFacility[col] != null && prevFacility[col] !== '') ? prevFacility[col].toString() : '';
+                if (prevVal && looseNorm(prevVal) !== looseNorm(cur)) {
+                    const hint = document.createElement('button');
+                    hint.type = 'button';
+                    hint.textContent = '↩ ' + prevLabel + ': ' + (prevVal.length > 16 ? prevVal.substring(0, 14) + '…' : prevVal);
+                    hint.title = 'Valeur en ' + prevLabel + ' : ' + prevVal + ' — cliquer pour la réutiliser';
+                    hint.style.cssText = 'flex:0 0 auto;font-size:11px;padding:3px 8px;border:1px solid #c5ddf5;background:#f0f7ff;color:var(--wb-navy,#002244);border-radius:4px;cursor:pointer;white-space:nowrap;';
+                    hint.addEventListener('click', () => { inp.value = prevVal; inp.focus(); });
+                    r.appendChild(hint);
+                }
                 body.appendChild(r);
             });
             box.appendChild(body);
@@ -6699,10 +6735,25 @@
                     entries.forEach(({ rowNum: origRowNum, column }) => {
                         const facility = allFacilities.find(f => f.excelRow === origRowNum);
                         if (!facility) return;
-                        let highlightIdx = -1;
+                        // Columns to highlight on the facility row.
+                        const highlightIdxs = new Set();
                         if (column) {
                             const target = normalizeColumnName(column);
-                            highlightIdx = currentQReportHeaders.findIndex(h => normalizeColumnName(h) === target);
+                            const idx = currentQReportHeaders.findIndex(h => normalizeColumnName(h) === target);
+                            if (idx >= 0) highlightIdxs.add(idx);
+                        }
+                        // OtherChecks comments are filed under the *check* name, which isn't a
+                        // CQR column, so the above finds nothing. Fall back to highlighting the
+                        // cells the analyst actually changed on this row, so the corrected
+                        // field is visible instead of nothing (Bug#1 relabel).
+                        if (highlightIdxs.size === 0) {
+                            const mod = modifications.get(origRowNum);
+                            if (mod && mod.corrections) {
+                                mod.corrections.forEach((_v, changedCol) => {
+                                    const idx = currentQReportHeaders.findIndex(h => normalizeColumnName(h) === normalizeColumnName(changedCol));
+                                    if (idx >= 0) highlightIdxs.add(idx);
+                                });
+                            }
                         }
                         const cells = [];
                         for (let c = 1; c <= 6; c++) cells.push(v21_cellInlineStr(c, nextRowNum, null, ''));
@@ -6710,7 +6761,7 @@
                             const colNum = 7 + i;
                             const v = facility[currentQReportHeaders[i]];
                             const text = (v !== undefined && v !== null) ? v : '';
-                            const sIdx = (i === highlightIdx) ? indices.facilityHighlight : indices.facilityData;
+                            const sIdx = highlightIdxs.has(i) ? indices.facilityHighlight : indices.facilityData;
                             cells.push(v21_cellInlineStr(colNum, nextRowNum, sIdx, text));
                         }
                         rows.push(`<row r="${nextRowNum}">${cells.join('')}</row>`);
