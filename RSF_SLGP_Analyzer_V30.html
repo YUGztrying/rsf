@@ -28,11 +28,15 @@
             --warning-bg: #fff7e6;
             --info: #0065FF;
             --info-bg: #deebff;
+            --neutral-50: #FAFBFC;
             --neutral-100: #F4F5F7;
             --neutral-200: #EBECF0;
             --neutral-300: #DFE1E6;
+            --neutral-400: #B3BAC5;
             --neutral-500: #97A0AF;
+            --neutral-600: #6B778C;
             --neutral-700: #42526E;
+            --neutral-800: #253858;
             --neutral-900: #172B4D;
             --radius-sm: 4px;
             --radius-md: 8px;
@@ -114,9 +118,9 @@
         .top-stat.stat-conform .top-stat-value { color: #57D9A3; }
         .top-stat.stat-nonconform .top-stat-value { color: #FF7452; }
         .top-stat.stat-treated .top-stat-value { color: #79E2F2; }
-        .top-stat.stat-missing .top-stat-value { color: #FF7452; }
+        .top-stat.stat-missing .top-stat-value { color: #FF8FB1; }
         .top-stat.stat-qoq .top-stat-value { color: #FFC400; }
-        .top-stat.stat-other .top-stat-value { color: #79E2F2; }
+        .top-stat.stat-other .top-stat-value { color: #B3BFFF; }
 
         .top-bar-actions {
             display: flex;
@@ -499,10 +503,6 @@
             background: var(--warning-bg) !important;
             border-left: 3px solid var(--warning) !important;
         }
-        .diff-new {
-            background: #e8f5e9 !important;
-            border-left: 3px solid var(--success) !important;
-        }
         .diff-removed {
             background: var(--danger-bg) !important;
             border-left: 3px solid var(--danger) !important;
@@ -824,46 +824,6 @@
             text-align: right;
         }
 
-        /* Rank breakdown mini-table */
-        .dash-rank-table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 12px;
-        }
-        .dash-rank-table th {
-            text-align: left;
-            padding: 6px 8px;
-            font-weight: 600;
-            color: var(--neutral-500);
-            border-bottom: 2px solid var(--neutral-200);
-            font-size: 11px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-        .dash-rank-table td {
-            padding: 5px 8px;
-            border-bottom: 1px solid var(--neutral-100);
-            color: var(--neutral-900);
-        }
-        .dash-rank-table tr:hover td { background: var(--wb-blue-lighter); }
-        .dash-rank-table .rank-issues-badge {
-            display: inline-block;
-            background: var(--danger-bg);
-            color: var(--danger);
-            padding: 1px 7px;
-            border-radius: 10px;
-            font-weight: 700;
-            font-size: 11px;
-        }
-        .dash-rank-table .rank-issues-badge.zero {
-            background: var(--success-bg);
-            color: var(--success);
-        }
-        .dash-rank-scroll {
-            max-height: 180px;
-            overflow-y: auto;
-        }
-
         /* CTA button */
         .dashboard-cta {
             padding: 16px 28px;
@@ -1154,7 +1114,7 @@
             top: 0;
             z-index: 10;
             white-space: normal;
-            min-width: 140px;
+            min-width: 120px;
             word-wrap: break-word;
             letter-spacing: 0.2px;
         }
@@ -1171,7 +1131,7 @@
             padding: 8px 12px;
             border-bottom: 1px solid var(--neutral-200);
             font-size: 13px;
-            min-width: 140px;
+            min-width: 120px;
             white-space: normal;
             word-wrap: break-word;
         }
@@ -1239,12 +1199,6 @@
             color: #0e7490;
         }
 
-        .issue-indicator.corrected {
-            background: var(--success-bg);
-            color: var(--success);
-            text-decoration: line-through;
-        }
-
         .issue-indicator.ignored {
             background: var(--neutral-200);
             color: var(--neutral-500);
@@ -1272,18 +1226,8 @@
         .ignore-btn:hover { background: var(--neutral-700); }
         .ignore-btn.restore { background: var(--wb-blue); }
         .ignore-btn.restore:hover { background: var(--wb-lochmara); }
-        
-        .modified-badge {
-            background: var(--success);
-            color: white;
-            padding: 2px 8px;
-            border-radius: 3px;
-            font-size: 10px;
-            font-weight: 700;
-            margin-left: 4px;
-        }
-        
-        .editable-input, .editable-select, .editable-textarea {
+
+        .editable-input, .editable-textarea {
             width: 100%;
             padding: 5px 8px;
             border: 1px solid var(--neutral-300);
@@ -1294,7 +1238,7 @@
             color: var(--neutral-900);
         }
 
-        .editable-input:focus, .editable-select:focus, .editable-textarea:focus {
+        .editable-input:focus, .editable-textarea:focus {
             outline: none;
             border-color: var(--wb-blue);
             box-shadow: 0 0 0 2px rgba(0,159,218,0.15);
@@ -1391,7 +1335,7 @@
             border-radius: var(--radius-md);
             padding: 16px 20px;
             box-shadow: var(--shadow-lg);
-            z-index: 10000;
+            z-index: 9998; /* below modal-overlay (10000) so toasts never cover modal controls */
             animation: slideIn 0.25s ease;
             max-width: 380px;
             border-left: 4px solid var(--wb-blue);
@@ -2111,20 +2055,12 @@
             
             <div class="info-bar">
                 ✏️ <strong>Édition complète</strong> — 
-                <span id="colorInfo">Les colonnes en ROUGE ont des problèmes</span>
+                <span id="colorInfo">Les cellules en rouge signalent un problème sur la facilité</span>
                 <div class="problem-nav" id="problemNav">
                     <button id="prevProblemBtn" title="Problème précédent (Alt+↑)">↑ Précédent</button>
                     <span class="nav-counter" id="problemNavCounter">0/0</span>
                     <button id="nextProblemBtn" title="Problème suivant (Alt+↓)">Suivant ↓</button>
                 </div>
-            </div>
-
-            <!-- RETURN BANNER (shown when navigating from OtherChecks) -->
-            <div id="returnBanner" onclick="returnToOtherChecks()" style="display:none;background:linear-gradient(90deg,#fef3c7 0%,#fde68a 100%);border:2px solid #f59e0b;border-radius:8px;padding:10px 16px;margin:8px 0;align-items:center;gap:12px;font-size:14px;cursor:pointer;transition:all 0.2s;" onmouseover="this.style.background='linear-gradient(90deg,#fde68a 0%,#fcd34d 100%)'" onmouseout="this.style.background='linear-gradient(90deg,#fef3c7 0%,#fde68a 100%)'">
-                <span style="font-size:18px;">←</span>
-                <strong style="color:#92400e;">Retour OtherChecks</strong>
-                <span id="returnBannerContext" style="color:#78350f;flex:1;">Vous corrigez la ligne ... depuis OtherChecks</span>
-                <span style="color:#78350f;font-size:12px;font-style:italic;">cliquez pour revenir</span>
             </div>
 
             <div class="compliance-summary" id="complianceSummary" style="display:none;"></div>
@@ -2448,7 +2384,6 @@
         let quarterCutoffSerial = null;
         let selectedRows = new Set();
         let currentFilter = 'all';
-        let returnContext = null;  // { rowNum, column } — set when navigating from OtherChecks → CQR
         let currentColumnFilter = '';
         let selectedRanks = new Set(); // Multi-rank selection
         let rankColumnName = null;
@@ -5561,7 +5496,7 @@
                             ${badgesHTML}
                         </div>
                         <div style="font-size:11px;color:var(--neutral-600);margin-bottom:6px">
-                            <span style="color:var(--neutral-500)">${escOld || '(vide)'}</span> → <strong style="color:var(--success,#16a34a)">${escNew || '(vide)'}</strong>
+                            <span style="color:var(--neutral-500)">${escOld || '(vide)'}</span> → <strong style="color:var(--success)">${escNew || '(vide)'}</strong>
                         </div>
                         <textarea class="cqr-bulk-comment" data-column="${escCol}" data-types="${linkedTypes.join(',')}" placeholder="Commentaire pour cette modification (optionnel)..." rows="2" style="width:100%;padding:6px 8px;border:1px solid var(--neutral-300);border-radius:4px;font-size:12px;font-family:inherit;resize:vertical;box-sizing:border-box"></textarea>
                     </div>
@@ -5702,7 +5637,7 @@
             thProblems.style.right = '0';
             thProblems.style.background = 'var(--wb-navy)';
             thProblems.style.zIndex = '11';
-            thProblems.style.borderLeft = '3px solid var(--wb-navy, #1e40af)';
+            thProblems.style.borderLeft = '3px solid var(--wb-navy)';
             headerRow.appendChild(thProblems);
             
             tableHead.appendChild(headerRow);
@@ -5745,9 +5680,9 @@
                 const tdProblems = document.createElement('td');
                 tdProblems.style.position = 'sticky';
                 tdProblems.style.right = '0';
-                tdProblems.style.background = 'var(--neutral-50, #f9fafb)';
+                tdProblems.style.background = 'var(--neutral-50)';
                 tdProblems.style.zIndex = '4';
-                tdProblems.style.borderLeft = '3px solid var(--wb-navy, #1e40af)';
+                tdProblems.style.borderLeft = '3px solid var(--wb-navy)';
                 tdProblems.style.padding = '6px 8px';
                 tdProblems.style.verticalAlign = 'top';
                 
@@ -5842,7 +5777,7 @@
                         // V22: "Corriger dans CQR" — switch to CQR tab and surface this row
                         const viewCQRBtn = document.createElement('button');
                         viewCQRBtn.className = 'apply-to-all-btn';
-                        viewCQRBtn.style.background = 'var(--wb-blue, #2563eb)';
+                        viewCQRBtn.style.background = 'var(--wb-blue)';
                         viewCQRBtn.textContent = '📋 Voir / corriger la ligne';
                         viewCQRBtn.title = 'Afficher la ligne complète de cette facilité pour la corriger ici';
                         viewCQRBtn.addEventListener('click', () => {
@@ -5906,7 +5841,7 @@
                     });
                     
                     if (problemsList.children.length === 0) {
-                        tdProblems.style.color = 'var(--success, #16a34a)';
+                        tdProblems.style.color = 'var(--success)';
                         tdProblems.style.fontSize = '11px';
                         tdProblems.style.textAlign = 'center';
                         tdProblems.innerHTML = '<em>Tous traités ✓</em>';
@@ -5934,16 +5869,6 @@
                 tab.classList.add('active');
                 currentFilter = tab.dataset.filter;
 
-                // V22: if the user manually leaves the CQR view, drop any
-                // pending OtherChecks return context (they decided otherwise).
-                if (currentFilter !== 'all' && currentFilter !== 'missing' && currentFilter !== 'qoq') {
-                    returnContext = null;
-                    hideReturnBanner();
-                } else if (returnContext) {
-                    // Still in a CQR-style view — keep banner visible
-                    showReturnBanner();
-                }
-                
                 document.querySelectorAll('.column-filter').forEach(f => f.classList.remove('active'));
                 if (currentFilter === 'missing') document.getElementById('missingFilter').classList.add('active');
                 else if (currentFilter === 'qoq') document.getElementById('qoqFilter').classList.add('active');
@@ -6137,7 +6062,7 @@
             overlay.style.zIndex = '9999';
             overlay.innerHTML = `
                 <div style="background:white;padding:32px 48px;border-radius:8px;display:flex;flex-direction:column;align-items:center;gap:16px;box-shadow:0 8px 32px rgba(0,0,0,0.2);">
-                    <div style="width:48px;height:48px;border:4px solid var(--neutral-200);border-top-color:var(--wb-blue,#2563eb);border-radius:50%;animation:exportSpin 0.8s linear infinite;"></div>
+                    <div style="width:48px;height:48px;border:4px solid var(--neutral-200);border-top-color:var(--wb-blue);border-radius:50%;animation:exportSpin 0.8s linear infinite;"></div>
                     <div style="font-size:14px;font-weight:500;color:var(--neutral-700);">Export en cours...</div>
                     <div style="font-size:12px;color:var(--neutral-500);">Génération du fichier Excel, veuillez patienter</div>
                 </div>
@@ -6205,7 +6130,7 @@
             box.style.cssText = 'background:#fff;border-radius:10px;max-width:640px;width:100%;max-height:85vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 10px 40px rgba(0,0,0,0.3);';
 
             const hd = document.createElement('div');
-            hd.style.cssText = 'padding:14px 18px;background:var(--wb-navy,#0a2540);color:#fff;display:flex;justify-content:space-between;align-items:flex-start;gap:12px;';
+            hd.style.cssText = 'padding:14px 18px;background:var(--wb-navy);color:#fff;display:flex;justify-content:space-between;align-items:flex-start;gap:12px;';
             const hdTxt = document.createElement('div');
             hdTxt.innerHTML = '<div style="font-weight:600;font-size:15px;">Facilité ' + (rang ? ('#' + rang + ' — ') : '') + (nom || ('ligne ' + excelRow)) + '</div>' +
                               '<div style="font-size:11px;opacity:0.85;margin-top:3px;">Contrôle signalé : ' + issueColumn + '</div>';
@@ -6217,7 +6142,7 @@
 
             if (alignmentWarn) {
                 const warn = document.createElement('div');
-                warn.style.cssText = 'padding:9px 18px;background:var(--warning-bg,#fff7e6);color:#8a5a00;border-bottom:1px solid #f0d9a8;font-size:12px;line-height:1.4;';
+                warn.style.cssText = 'padding:9px 18px;background:var(--warning-bg);color:#8a5a00;border-bottom:1px solid #f0d9a8;font-size:12px;line-height:1.4;';
                 warn.textContent = alignmentWarn;
                 box.appendChild(warn);
             }
@@ -6254,7 +6179,7 @@
                     hint.type = 'button';
                     hint.textContent = '↩ ' + prevLabel + ': ' + (prevVal.length > 16 ? prevVal.substring(0, 14) + '…' : prevVal);
                     hint.title = 'Valeur en ' + prevLabel + ' : ' + prevVal + ' — cliquer pour la réutiliser';
-                    hint.style.cssText = 'flex:0 0 auto;font-size:11px;padding:3px 8px;border:1px solid #c5ddf5;background:#f0f7ff;color:var(--wb-navy,#002244);border-radius:4px;cursor:pointer;white-space:nowrap;';
+                    hint.style.cssText = 'flex:0 0 auto;font-size:11px;padding:3px 8px;border:1px solid #c5ddf5;background:#f0f7ff;color:var(--wb-navy);border-radius:4px;cursor:pointer;white-space:nowrap;';
                     hint.addEventListener('click', () => { inp.value = prevVal; inp.focus(); });
                     r.appendChild(hint);
                 }
@@ -6282,10 +6207,10 @@
             ft.style.cssText = 'padding:12px 18px;border-top:1px solid #e5e7eb;display:flex;justify-content:flex-end;gap:8px;';
             const cancel = document.createElement('button');
             cancel.textContent = 'Annuler';
-            cancel.style.cssText = 'padding:8px 14px;border:1px solid #d1d5db;background:#fff;border-radius:6px;cursor:pointer;font-size:13px;';
+            cancel.className = 'modal-btn secondary'; // shared styling + hover, consistent with other modals
             const save = document.createElement('button');
             save.textContent = '💾 Enregistrer';
-            save.style.cssText = 'padding:8px 16px;border:none;background:var(--wb-blue,#1668c1);color:#fff;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;';
+            save.className = 'modal-btn primary';
             ft.appendChild(cancel); ft.appendChild(save);
             box.appendChild(ft);
 
@@ -6325,85 +6250,10 @@
             };
         }
 
-        function goToCQRRow(rowNum, originColumn) {
-            // Save context for the return banner
-            returnContext = { rowNum, column: originColumn || '' };
-
-            // Force the global filter to 'all' so the row is guaranteed to be in the
-            // displayed set (otherwise it could be filtered out by an active sub-filter).
-            currentFilter = 'all';
-            currentColumnFilter = '';
-
-            // Update the tab UI to reflect 'all'
-            document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
-            const allTab = document.querySelector('.filter-tab[data-filter="all"]');
-            if (allTab) allTab.classList.add('active');
-            document.querySelectorAll('.column-filter').forEach(f => f.classList.remove('active'));
-            const qSelector = document.getElementById('quarterSelector');
-            if (qSelector) qSelector.classList.remove('active');
-
-            // Find the target facility's page
-            const idx = allFacilities.findIndex(f => f.excelRow === rowNum);
-            if (idx >= 0) {
-                currentPage = Math.floor(idx / pageSize) + 1;
-            } else {
-                currentPage = 1;
-            }
-
-            displayData();
-
-            // After the table renders, scroll to and flash-highlight the row.
-            // Use rAF + small timeout to ensure DOM is settled.
-            requestAnimationFrame(() => {
-                setTimeout(() => {
-                    const tr = document.querySelector(`tr[data-excel-row="${rowNum}"]`);
-                    if (tr) {
-                        tr.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                        // Flash highlight: 2-second yellow glow on the row
-                        tr.style.transition = 'box-shadow 0.3s, background-color 0.3s';
-                        tr.style.boxShadow = '0 0 0 3px #f59e0b, inset 0 0 12px rgba(245, 158, 11, 0.3)';
-                        const prevBg = tr.style.backgroundColor;
-                        tr.style.backgroundColor = '#fef3c7';
-                        setTimeout(() => {
-                            tr.style.boxShadow = '';
-                            tr.style.backgroundColor = prevBg;
-                        }, 2000);
-                    }
-                    showReturnBanner();
-                }, 50);
-            });
-        }
-
-        function showReturnBanner() {
-            const banner = document.getElementById('returnBanner');
-            const ctx = document.getElementById('returnBannerContext');
-            if (!banner || !returnContext) return;
-            const colTxt = returnContext.column ? ` — colonne « ${returnContext.column} »` : '';
-            ctx.textContent = `Vous corrigez la ligne ${returnContext.rowNum}${colTxt} depuis OtherChecks`;
-            banner.style.display = 'flex';
-        }
-
-        function hideReturnBanner() {
-            const banner = document.getElementById('returnBanner');
-            if (banner) banner.style.display = 'none';
-        }
-
-        // Return to OtherChecks from CQR.
-        function returnToOtherChecks() {
-            returnContext = null;
-            hideReturnBanner();
-            // Activate the 'other' filter tab and re-render
-            document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
-            const otherTab = document.querySelector('.filter-tab[data-filter="other"]');
-            if (otherTab) otherTab.classList.add('active');
-            document.querySelectorAll('.column-filter').forEach(f => f.classList.remove('active'));
-            const otherFilter = document.getElementById('otherFilter');
-            if (otherFilter) otherFilter.classList.add('active');
-            currentFilter = 'other';
-            currentColumnFilter = '';
-            currentPage = 1;
-            displayData();
-        }
+        // (Removed dead code: goToCQRRow + the return-banner navigation
+        // showReturnBanner/hideReturnBanner/returnToOtherChecks. These were never
+        // called — superseded by the in-place OtherChecks "Voir / corriger la ligne"
+        // modal (openOtherCheckRowModal).)
 
 
         // ════════════════════════════════════════════════════════════
