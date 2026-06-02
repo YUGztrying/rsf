@@ -4461,24 +4461,25 @@
             showApplyCommentChecklist(issueType, column, comment, targetRows, rowNum);
         }
 
-        function countSimilarSuggestions(issueType, column, prevValue) {
+        function countSimilarSuggestions(issueType, column, prevValue, lookup) {
+            lookup = lookup || prevQuarterLookup;
             let count = 0;
-            const bidHeader = currentQReportHeaders.find(h => 
-                h && (normalizeColumnName(h).toLowerCase().includes('id emprunteur') || 
+            const bidHeader = currentQReportHeaders.find(h =>
+                h && (normalizeColumnName(h).toLowerCase().includes('id emprunteur') ||
                       normalizeColumnName(h).toLowerCase().includes('borrower id'))
             );
             if (!bidHeader) return 0;
-            
+
             issuesByType[issueType].forEach((issues, rowNum) => {
                 issues.forEach(issue => {
                     if (issue.column !== column) return;
                     const key = `${rowNum}-${issueType}-${column}`;
                     if (correctedProblems.has(key) || ignoredProblems.has(key)) return;
-                    
+
                     const facility = allFacilities.find(f => f.excelRow === rowNum);
                     if (!facility) return;
                     const bid = (facility[bidHeader] || '').toString();
-                    const prevFacility = bid ? prevQuarterLookup.get(bid) : null;
+                    const prevFacility = bid ? lookup.get(bid) : null;
                     if (!prevFacility) return;
                     const pv = prevFacility[column];
                     if (pv !== undefined && pv !== null && pv.toString() === prevValue) {
@@ -4491,7 +4492,7 @@
 
         // Wrapper: opens a modal with pre-filled auto-comment, lets user edit once,
         // then applies the correction + comment to all similar facilities.
-        function showBulkSuggestionModal(issueType, column, prevValue, autoComment, similarCount) {
+        function showBulkSuggestionModal(issueType, column, prevValue, autoComment, similarCount, lookup) {
             const overlay = document.createElement('div');
             overlay.className = 'modal-overlay';
             overlay.innerHTML = `
@@ -4525,15 +4526,16 @@
             document.getElementById('bulkSugConfirm').addEventListener('click', () => {
                 const finalComment = ta.value.trim() || autoComment;
                 overlay.remove();
-                acceptAllSimilarSuggestions(issueType, column, prevValue, finalComment);
+                acceptAllSimilarSuggestions(issueType, column, prevValue, finalComment, lookup);
             });
             
             overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
         }
         
-        function acceptAllSimilarSuggestions(issueType, column, prevValue, autoComment) {
-            const bidHeader = currentQReportHeaders.find(h => 
-                h && (normalizeColumnName(h).toLowerCase().includes('id emprunteur') || 
+        function acceptAllSimilarSuggestions(issueType, column, prevValue, autoComment, lookup) {
+            lookup = lookup || prevQuarterLookup;
+            const bidHeader = currentQReportHeaders.find(h =>
+                h && (normalizeColumnName(h).toLowerCase().includes('id emprunteur') ||
                       normalizeColumnName(h).toLowerCase().includes('borrower id'))
             );
             if (!bidHeader) return;
@@ -4552,7 +4554,7 @@
                     const facility = allFacilities.find(f => f.excelRow === rowNum);
                     if (!facility) return;
                     const bid = (facility[bidHeader] || '').toString();
-                    const prevFacility = bid ? prevQuarterLookup.get(bid) : null;
+                    const prevFacility = bid ? lookup.get(bid) : null;
                     if (!prevFacility) return;
                     const pv = prevFacility[column];
                     if (pv === undefined || pv === null || pv.toString() !== prevValue) return;
@@ -4964,36 +4966,59 @@
                             
                             problemItem.appendChild(header);
                             
-                            // Suggestion context — show previous quarter value
+                            // Suggestion context — previous-quarter value, with a per-line
+                            // quarter picker so the analyst can compare this facility against
+                            // any quarter right in the card, instead of scrolling up to the
+                            // global "Comparer avec" selector.
                             if (!isIgnored && prevQuarterLookup.size > 0 && issue.type !== 'dates') {
-                                const bidHeader = currentQReportHeaders.find(h => 
-                                    h && (normalizeColumnName(h).toLowerCase().includes('id emprunteur') || 
+                                const bidHeader = currentQReportHeaders.find(h =>
+                                    h && (normalizeColumnName(h).toLowerCase().includes('id emprunteur') ||
                                           normalizeColumnName(h).toLowerCase().includes('borrower id'))
                                 );
                                 const bid = bidHeader ? (facility[bidHeader] || '').toString() : '';
-                                const prevFacility = bid ? prevQuarterLookup.get(bid) : null;
-                                
-                                if (prevFacility && prevFacility[issue.column] !== undefined) {
-                                    const prevVal = prevFacility[issue.column];
-                                    const currVal = facility[issue.column] || '(vide)';
-                                    const prevStr = prevVal !== null && prevVal !== '' ? prevVal.toString() : '(vide)';
-                                    
-                                    // Only show if values differ
-                                    if (normalizeColumnName(prevStr) !== normalizeColumnName(currVal.toString())) {
-                                        const suggDiv = document.createElement('div');
-                                        suggDiv.className = 'suggestion-context';
-                                        
-                                        const prevLabel = previousQuarterSheetName || 'Q précédent';
-                                        const autoComment = `Valeur rétablie — ${issue.column} était "${prevStr}" en ${prevLabel}, changé en "${currVal}" sans justification apparente.`;
-                                        
-                                        suggDiv.innerHTML = `
-                                            <span class="prev-label">${prevLabel} :</span> <span class="prev-value">${prevStr}</span><br>
-                                            <span class="prev-label">Actuel :</span> <span class="curr-value">${currVal}</span>
-                                        `;
-                                        
+                                const gprev = bid ? prevQuarterLookup.get(bid) : null;
+                                const gprevRaw = gprev ? gprev[issue.column] : undefined;
+                                const gprevStr = (gprevRaw !== undefined && gprevRaw !== null && gprevRaw !== '') ? gprevRaw.toString() : '(vide)';
+                                const gcurr = (facility[issue.column] || '(vide)').toString();
+
+                                // Surface the card when the default (global) reference quarter shows a diff.
+                                if (bid && gprev && gprevRaw !== undefined &&
+                                    normalizeColumnName(gprevStr) !== normalizeColumnName(gcurr)) {
+                                    const suggDiv = document.createElement('div');
+                                    suggDiv.className = 'suggestion-context';
+                                    let cardQuarterIdx = selectedQuarterIndex;
+
+                                    const contentEl = document.createElement('div');
+
+                                    const renderCard = () => {
+                                        const lookup = getQuarterLookupById(cardQuarterIdx);
+                                        const prevFacility = bid ? lookup.get(bid) : null;
+                                        const label = (allPreviousQuarters[cardQuarterIdx] && allPreviousQuarters[cardQuarterIdx].name) || 'Q précédent';
+                                        const currVal = facility[issue.column] || '(vide)';
+                                        const prevRaw = prevFacility ? prevFacility[issue.column] : undefined;
+                                        const prevStr = (prevRaw !== undefined && prevRaw !== null && prevRaw !== '') ? prevRaw.toString() : '(vide)';
+                                        contentEl.innerHTML = '';
+
+                                        const differs = prevFacility && prevRaw !== undefined &&
+                                            normalizeColumnName(prevStr) !== normalizeColumnName(currVal.toString());
+                                        if (!differs) {
+                                            const note = document.createElement('div');
+                                            note.style.cssText = 'font-size:11px;color:var(--neutral-500);';
+                                            note.textContent = prevFacility ? `Identique à ${label} (${prevStr})` : `Facilité absente en ${label}`;
+                                            contentEl.appendChild(note);
+                                            return;
+                                        }
+
+                                        const vals = document.createElement('div');
+                                        vals.innerHTML =
+                                            `<span class="prev-label">${label} :</span> <span class="prev-value">${prevStr}</span><br>` +
+                                            `<span class="prev-label">Actuel :</span> <span class="curr-value">${currVal}</span>`;
+                                        contentEl.appendChild(vals);
+
+                                        const autoComment = `Valeur rétablie — ${issue.column} était "${prevStr}" en ${label}, changé en "${currVal}" sans justification apparente.`;
+
                                         const btnRow = document.createElement('div');
                                         btnRow.style.cssText = 'display:flex;gap:4px;margin-top:4px;flex-wrap:wrap';
-                                        
                                         const acceptBtn = document.createElement('button');
                                         acceptBtn.className = 'suggestion-accept-btn';
                                         acceptBtn.textContent = '✓ Rétablir';
@@ -5004,23 +5029,43 @@
                                             showPostEditModal(facility.excelRow, issue.column, oldVal, prevStr, autoComment);
                                         });
                                         btnRow.appendChild(acceptBtn);
-                                        
-                                        // Count similar suggestions (same column, same pattern)
-                                        const similarCount = countSimilarSuggestions(issue.type, issue.column, prevStr);
+
+                                        const similarCount = countSimilarSuggestions(issue.type, issue.column, prevStr, lookup);
                                         if (similarCount > 1) {
                                             const bulkBtn = document.createElement('button');
                                             bulkBtn.className = 'suggestion-accept-btn';
                                             bulkBtn.style.background = 'var(--wb-navy)';
                                             bulkBtn.textContent = `✓ Rétablir les ${similarCount} similaires`;
                                             bulkBtn.addEventListener('click', () => {
-                                                showBulkSuggestionModal(issue.type, issue.column, prevStr, autoComment, similarCount);
+                                                showBulkSuggestionModal(issue.type, issue.column, prevStr, autoComment, similarCount, lookup);
                                             });
                                             btnRow.appendChild(bulkBtn);
                                         }
-                                        
-                                        suggDiv.appendChild(btnRow);
-                                        problemItem.appendChild(suggDiv);
+                                        contentEl.appendChild(btnRow);
+                                    };
+
+                                    // Per-line quarter picker (only when there's more than one quarter to choose).
+                                    if (allPreviousQuarters.length > 1) {
+                                        const pickRow = document.createElement('div');
+                                        pickRow.style.cssText = 'display:flex;align-items:center;gap:6px;margin-bottom:4px;';
+                                        const pl = document.createElement('span');
+                                        pl.className = 'prev-label';
+                                        pl.textContent = 'Comparer avec :';
+                                        const sel = document.createElement('select');
+                                        sel.style.cssText = 'font-size:10px;padding:1px 4px;border:1px solid #c5ddf5;border-radius:3px;cursor:pointer;';
+                                        allPreviousQuarters.forEach((q, i) => {
+                                            const o = document.createElement('option'); o.value = i; o.textContent = q.name;
+                                            if (i === cardQuarterIdx) o.selected = true;
+                                            sel.appendChild(o);
+                                        });
+                                        sel.addEventListener('change', () => { cardQuarterIdx = parseInt(sel.value); renderCard(); });
+                                        pickRow.appendChild(pl); pickRow.appendChild(sel);
+                                        suggDiv.appendChild(pickRow);
                                     }
+
+                                    suggDiv.appendChild(contentEl);
+                                    renderCard();
+                                    problemItem.appendChild(suggDiv);
                                 }
                             }
                             
