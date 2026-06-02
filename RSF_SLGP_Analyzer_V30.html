@@ -3277,6 +3277,46 @@
             });
         }
 
+        // Borrower-ID → facility lookup for an ARBITRARY quarter (index into
+        // allPreviousQuarters), WITHOUT disturbing the global reference quarter.
+        // Parses + caches that quarter's data on demand. Used by the per-line quarter
+        // picker in the OtherChecks correction modal so an analyst can glance at any
+        // quarter for one facility without changing the global "Comparer avec" setting.
+        function getQuarterLookupById(idx) {
+            if (idx < 0 || idx >= allPreviousQuarters.length) return new Map();
+            const q = allPreviousQuarters[idx];
+            if (q.lookupById) return q.lookupById;
+            if (!q.data || q.data.length === 0) {
+                const sheet = workbookData && workbookData.Sheets[q.sheetName];
+                if (sheet) {
+                    const hri = savedHeaderRowIndex;
+                    const data = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false });
+                    q.data = [];
+                    const prevOffset = detectHeaderOffset(data[hri] || []);
+                    for (let i = hri + 1; i < data.length; i++) {
+                        const row = data[i];
+                        if (!row || row.length === 0 || row.every(c => !c || c === '')) continue;
+                        const facility = {};
+                        let hasData = false;
+                        currentQReportHeaders.forEach((header, j) => {
+                            if (header) {
+                                const value = row[prevOffset + j];
+                                if (value !== undefined && value !== null && value !== '') { facility[header] = value; hasData = true; }
+                            }
+                        });
+                        if (hasData) { facility.excelRow = i + 1; facility.arrayIndex = i; q.data.push(facility); }
+                    }
+                }
+            }
+            const m = new Map();
+            const bidHeader = currentQReportHeaders.find(h =>
+                h && (normalizeColumnName(h).toLowerCase().includes('id emprunteur') ||
+                      normalizeColumnName(h).toLowerCase().includes('borrower id')));
+            if (bidHeader) (q.data || []).forEach(f => { const bid = f[bidHeader]; if (bid) m.set(bid.toString(), f); });
+            q.lookupById = m;
+            return m;
+        }
+
         // ═══════════════════════════════════════════════════
         // FILTERS & DROPDOWNS
         // ═══════════════════════════════════════════════════
@@ -6170,11 +6210,33 @@
             body.style.cssText = 'padding:10px 18px;overflow-y:auto;flex:1;';
             const skip = new Set([nomH, rangH, idH].filter(Boolean));
             const inputs = [];
-            // Previous-quarter facility for this borrower (point 5): lets us surface the
-            // prior value next to each field so the analyst doesn't have to dig back into
-            // the file, with one click to reuse it.
-            const prevFacility = (idH && facility[idH] != null) ? prevQuarterLookup.get(facility[idH].toString()) : null;
-            const prevLabel = previousQuarterSheetName || 'Q-1';
+            const borrowerId = (idH && facility[idH] != null) ? facility[idH].toString() : '';
+
+            // Per-line reference-quarter picker (point 4): glance at any quarter's values
+            // for THIS facility without changing the global "Comparer avec" setting.
+            // Only meaningful when we can match the borrower by ID across quarters.
+            let refQuarterIdx = selectedQuarterIndex;
+            if (borrowerId && allPreviousQuarters.length > 0) {
+                const qRow = document.createElement('div');
+                qRow.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 0 10px;border-bottom:1px solid #e5e7eb;margin-bottom:6px;position:sticky;top:0;background:#fff;z-index:1;';
+                const qLab = document.createElement('label');
+                qLab.textContent = 'Trimestre de référence :';
+                qLab.style.cssText = 'font-size:12px;color:#374151;font-weight:600;';
+                const qSel = document.createElement('select');
+                qSel.style.cssText = 'font-size:12px;padding:4px 8px;border:1px solid #d1d5db;border-radius:4px;cursor:pointer;';
+                allPreviousQuarters.forEach((q, i) => {
+                    const o = document.createElement('option'); o.value = i; o.textContent = q.name;
+                    if (i === selectedQuarterIndex) o.selected = true;
+                    qSel.appendChild(o);
+                });
+                qSel.addEventListener('change', () => { refQuarterIdx = parseInt(qSel.value); renderHints(); });
+                qRow.appendChild(qLab); qRow.appendChild(qSel);
+                body.appendChild(qRow);
+            }
+
+            // Build the editable field rows (hints are (re)rendered separately so the
+            // quarter picker can refresh them in place).
+            const fieldRows = [];
             currentQReportHeaders.forEach(col => {
                 if (!col || skip.has(col)) return;
                 const r = document.createElement('div');
@@ -6191,19 +6253,32 @@
                 inp.style.cssText = 'width:200px;font-size:12px;padding:5px 8px;border:1px solid #d1d5db;border-radius:4px;flex:0 0 auto;';
                 inputs.push(inp);
                 r.appendChild(lab); r.appendChild(inp);
-                // Previous-quarter hint + one-click reuse, only when it differs from current.
-                const prevVal = (prevFacility && prevFacility[col] != null && prevFacility[col] !== '') ? prevFacility[col].toString() : '';
-                if (prevVal && looseNorm(prevVal) !== looseNorm(cur)) {
-                    const hint = document.createElement('button');
-                    hint.type = 'button';
-                    hint.textContent = '↩ ' + prevLabel + ': ' + (prevVal.length > 16 ? prevVal.substring(0, 14) + '…' : prevVal);
-                    hint.title = 'Valeur en ' + prevLabel + ' : ' + prevVal + ' — cliquer pour la réutiliser';
-                    hint.style.cssText = 'flex:0 0 auto;font-size:11px;padding:3px 8px;border:1px solid #c5ddf5;background:#f0f7ff;color:var(--wb-navy);border-radius:4px;cursor:pointer;white-space:nowrap;';
-                    hint.addEventListener('click', () => { inp.value = prevVal; inp.focus(); });
-                    r.appendChild(hint);
-                }
                 body.appendChild(r);
+                fieldRows.push({ col, r, inp, cur, hintEl: null });
             });
+
+            // Render the previous-quarter hint next to each field for the chosen quarter
+            // (one click reuses the value). Re-runs when the quarter picker changes.
+            function renderHints() {
+                const lookup = getQuarterLookupById(refQuarterIdx);
+                const prevFac = borrowerId ? lookup.get(borrowerId) : null;
+                const label = (allPreviousQuarters[refQuarterIdx] && allPreviousQuarters[refQuarterIdx].name) || 'Q-1';
+                fieldRows.forEach(fr => {
+                    if (fr.hintEl) { fr.hintEl.remove(); fr.hintEl = null; }
+                    const prevVal = (prevFac && prevFac[fr.col] != null && prevFac[fr.col] !== '') ? prevFac[fr.col].toString() : '';
+                    if (prevVal && looseNorm(prevVal) !== looseNorm(fr.cur)) {
+                        const hint = document.createElement('button');
+                        hint.type = 'button';
+                        hint.textContent = '↩ ' + label + ': ' + (prevVal.length > 16 ? prevVal.substring(0, 14) + '…' : prevVal);
+                        hint.title = 'Valeur en ' + label + ' : ' + prevVal + ' — cliquer pour la réutiliser';
+                        hint.style.cssText = 'flex:0 0 auto;font-size:11px;padding:3px 8px;border:1px solid #c5ddf5;background:#f0f7ff;color:var(--wb-navy);border-radius:4px;cursor:pointer;white-space:nowrap;';
+                        hint.addEventListener('click', () => { fr.inp.value = prevVal; fr.inp.focus(); });
+                        fr.r.appendChild(hint);
+                        fr.hintEl = hint;
+                    }
+                });
+            }
+            renderHints();
             box.appendChild(body);
 
             // Comment field lives INSIDE the modal so the analyst can correct + comment
