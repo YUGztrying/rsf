@@ -2217,13 +2217,62 @@
         // ═══════════════════════════════════════════════════
         // UTILITY FUNCTIONS
         // ═══════════════════════════════════════════════════
+        // Excel serial (integer, UTC midnight) from a calendar y/m/d.
+        // The 1899-12-30 epoch already compensates for Excel's 1900 leap-year bug.
+        function ymdToExcelSerial(y, m, d) {
+            const utc = Date.UTC(y, m - 1, d);
+            const epoch = Date.UTC(1899, 11, 30);
+            const serial = Math.round((utc - epoch) / 86400000);
+            return isFinite(serial) && serial >= 1 ? serial : null;
+        }
+
+        // Convert an edited cell value to an Excel date serial.
+        // Robust to the formats IFC analysts actually type in FR workbooks:
+        // dd/mm/yyyy, dd-mm-yyyy, dd.mm.yyyy (FR default), ISO yyyy-mm-dd, and Date
+        // objects. Returns null on anything we can't parse confidently, so the caller
+        // safely falls back to writing the value as text instead of guessing a date.
+        // NOTE: never relies on `new Date("d/m/y")`, which silently mis-parses
+        // "1/4/2025" as Jan-4 (US) and rejects FR dates outright.
         function dateToExcelSerial(dateString) {
-            if (!dateString) return null;
-            const date = new Date(dateString);
-            if (isNaN(date.getTime())) return null;
-            const utcDate = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate(), 12, 0, 0, 0));
-            const excelEpoch = new Date(Date.UTC(1899, 11, 30, 0, 0, 0, 0));
-            return (utcDate.getTime() - excelEpoch.getTime()) / (24 * 60 * 60 * 1000);
+            if (dateString === null || dateString === undefined || dateString === '') return null;
+
+            // Date object (the workbook is parsed with cellDates:true).
+            if (dateString instanceof Date) {
+                return isNaN(dateString.getTime())
+                    ? null
+                    : ymdToExcelSerial(dateString.getFullYear(), dateString.getMonth() + 1, dateString.getDate());
+            }
+
+            const s = dateString.toString().trim();
+            if (!s) return null;
+
+            // A bare number is already a serial — but only accept a plausible range so
+            // we don't read an 8-digit yyyymmdd or an id-like value as a serial.
+            if (/^\d+(\.\d+)?$/.test(s)) {
+                const n = parseFloat(s);
+                return (n >= 1 && n <= 401768) ? n : null; // 401768 = 31-Dec-3000
+            }
+
+            let mm, y, m, d;
+            // ISO first: yyyy-mm-dd | yyyy/mm/dd | yyyy.mm.dd
+            if ((mm = s.match(/^(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})$/))) {
+                y = +mm[1]; m = +mm[2]; d = +mm[3];
+            }
+            // day/month/year with a 4-digit year — FR default (dd/mm/yyyy),
+            // disambiguated when one field is clearly out of range.
+            else if ((mm = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/))) {
+                const a = +mm[1], b = +mm[2];
+                y = +mm[3];
+                if (a > 12 && b <= 12)      { d = a; m = b; }   // unambiguous dd/mm
+                else if (b > 12 && a <= 12) { d = b; m = a; }   // unambiguous mm/dd
+                else                        { d = a; m = b; }   // ambiguous → FR dd/mm
+            }
+            else {
+                return null; // unknown textual format → caller writes it as text
+            }
+
+            if (m < 1 || m > 12 || d < 1 || d > 31) return null;
+            return ymdToExcelSerial(y, m, d);
         }
 
         function normalizeColumnName(name) {
@@ -3198,6 +3247,7 @@
             if (q.data.length > 0) {
                 previousQuarterData = q.data;
                 previousQuarterSheetName = q.name;
+                rebuildPrevQuarterLookup();
                 return;
             }
             
@@ -3237,20 +3287,27 @@
             
             previousQuarterData = q.data;
             previousQuarterSheetName = q.name;
-            
-            // Build lookup by Borrower ID for suggestions
-            if (prevQuarterLookup.size === 0 && q.data.length > 0) {
-                const bidHeader = currentQReportHeaders.find(h => 
-                    h && (normalizeColumnName(h).toLowerCase().includes('id emprunteur') || 
-                          normalizeColumnName(h).toLowerCase().includes('borrower id'))
-                );
-                if (bidHeader) {
-                    q.data.forEach(f => {
-                        const bid = f[bidHeader];
-                        if (bid) prevQuarterLookup.set(bid.toString(), f);
-                    });
-                }
-            }
+
+            // Rebuild the suggestion lookup against the *selected* reference quarter.
+            rebuildPrevQuarterLookup();
+        }
+
+        // (Re)build the Borrower-ID → facility lookup the QoQ/missing suggestions use,
+        // from whichever quarter is currently selected as the comparison reference.
+        // Rebuilt on every quarter switch so "Rétablir" compares against the chosen
+        // quarter (default N-1) rather than being frozen to the first one loaded.
+        function rebuildPrevQuarterLookup() {
+            prevQuarterLookup = new Map();
+            if (!previousQuarterData || previousQuarterData.length === 0) return;
+            const bidHeader = currentQReportHeaders.find(h =>
+                h && (normalizeColumnName(h).toLowerCase().includes('id emprunteur') ||
+                      normalizeColumnName(h).toLowerCase().includes('borrower id'))
+            );
+            if (!bidHeader) return;
+            previousQuarterData.forEach(f => {
+                const bid = f[bidHeader];
+                if (bid) prevQuarterLookup.set(bid.toString(), f);
+            });
         }
 
         // ═══════════════════════════════════════════════════
@@ -3595,7 +3652,20 @@
                     }
                 });
             });
-            
+
+            // Arrears-days ("dates") issues must be counted in the denominator too —
+            // treatedSet below includes their corrected/ignored keys, so omitting them
+            // here let the progress bar exceed 100% once any were fixed.
+            issuesByType.dates.forEach((issues, rowNum) => {
+                issues.forEach(issue => {
+                    totalOriginalProblems++;
+                    const key = `${rowNum}-dates-${issue.column}`;
+                    if (!correctedProblems.has(key) && !ignoredProblems.has(key)) {
+                        rowsWithRemainingIssues.add(rowNum);
+                    }
+                });
+            });
+
             // Dedup keys: 'other' and 'othercheck' may both exist for the same problem.
             // Count each (rowNum, column) pair from issuesByType.other only once for treated.
             const treatedSet = new Set();
@@ -5005,6 +5075,7 @@
                                 }
                                 const commentValue = e.target.value.trim();
                                 modifications.get(facility.excelRow).comments.set(commentKey, commentValue);
+                                saveSession(); // persist the comment immediately (was lost on reload before)
                                 const corrKey = `${facility.excelRow}-${issue.type}-${issue.column}`;
                                 if (commentValue && !correctedProblems.has(corrKey)) {
                                     correctedProblems.add(corrKey);
@@ -5626,13 +5697,13 @@
                                 }
                                 const commentValue = e.target.value.trim();
                                 modifications.get(row.excelRow).comments.set(commentKey, commentValue);
+                                saveSession(); // persist the OtherChecks comment immediately (was lost on reload before)
                                 const corrKey = `${row.excelRow}-othercheck-${issueColumn}`;
                                 if (commentValue && !correctedProblems.has(corrKey)) {
                                     correctedProblems.add(corrKey);
                                     showPostCommentModal(row.excelRow, 'othercheck', issueColumn, commentValue);
                                 } else if (!commentValue && correctedProblems.has(corrKey)) {
                                     correctedProblems.delete(corrKey);
-                                    saveSession();
                                     updateStatistics();
                                 }
                             });
@@ -5706,9 +5777,14 @@
                 else if (currentFilter === 'qoq') document.getElementById('qoqFilter').classList.add('active');
                 else if (currentFilter === 'other') document.getElementById('otherFilter').classList.add('active');
                 
-                // Toggle quarter selector visibility
+                // Toggle the reference-quarter selector. Show it not only on the
+                // read-only "previous" diff, but on the tabs where the "Rétablir"
+                // suggestions live (QoQ / Missing / all) so the analyst can pick which
+                // quarter those suggestions compare against.
                 const qSelector = document.getElementById('quarterSelector');
-                if (currentFilter === 'previous') {
+                if (showPreviousQuarter &&
+                    (currentFilter === 'previous' || currentFilter === 'qoq' ||
+                     currentFilter === 'missing' || currentFilter === 'all')) {
                     qSelector.classList.add('active');
                 } else {
                     qSelector.classList.remove('active');
@@ -5927,6 +6003,30 @@
             const nom = nomH && facility[nomH] != null ? facility[nomH].toString() : '';
             const rang = rangH && facility[rangH] != null ? facility[rangH].toString() : '';
 
+            // ── Row-alignment safety check ──
+            // The modal looks the CQR facility up by the OtherChecks sheet's row number,
+            // which only works if both sheets are row-aligned. If the OtherChecks row
+            // carries its own borrower name/ID and it disagrees with the CQR facility we
+            // landed on, surface a warning instead of silently editing the wrong facility.
+            let alignmentWarn = '';
+            const ocRow = (typeof otherChecksData !== 'undefined') ? otherChecksData.find(r => r.excelRow === excelRow) : null;
+            if (ocRow && ocRow.cells) {
+                const ocCell = (pat) => {
+                    const c = ocRow.cells.find(cc => cc.column && looseNorm(cc.column).includes(pat));
+                    return c && c.value != null ? c.value.toString().trim() : '';
+                };
+                const ocId = ocCell('id emprunteur') || ocCell('borrower id');
+                const ocNom = ocCell("nom de l'emprunteur") || ocCell('emprunteur') || ocCell('borrower name');
+                const cqrId = idH && facility[idH] != null ? facility[idH].toString().trim() : '';
+                const idMismatch  = ocId  && cqrId && looseNorm(ocId)  !== looseNorm(cqrId);
+                const nomMismatch = ocNom && nom  && looseNorm(ocNom) !== looseNorm(nom);
+                if (idMismatch || nomMismatch) {
+                    alignmentWarn = "⚠ Alignement à vérifier : la feuille OtherChecks indique « "
+                        + (ocNom || ocId) + " » pour cette ligne, mais la facilité chargée est « "
+                        + (nom || cqrId || ('ligne ' + excelRow)) + " ». Vérifiez qu'il s'agit bien de la même facilité avant de corriger.";
+                }
+            }
+
             const overlay = document.createElement('div');
             overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px;';
             const box = document.createElement('div');
@@ -5942,6 +6042,13 @@
             xBtn.style.cssText = 'background:none;border:none;color:#fff;font-size:20px;cursor:pointer;line-height:1;flex:0 0 auto;';
             hd.appendChild(hdTxt); hd.appendChild(xBtn);
             box.appendChild(hd);
+
+            if (alignmentWarn) {
+                const warn = document.createElement('div');
+                warn.style.cssText = 'padding:9px 18px;background:var(--warning-bg,#fff7e6);color:#8a5a00;border-bottom:1px solid #f0d9a8;font-size:12px;line-height:1.4;';
+                warn.textContent = alignmentWarn;
+                box.appendChild(warn);
+            }
 
             const body = document.createElement('div');
             body.style.cssText = 'padding:10px 18px;overflow-y:auto;flex:1;';
