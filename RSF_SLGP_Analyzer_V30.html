@@ -1390,11 +1390,16 @@
             top: 0; left: 0; right: 0; bottom: 0;
             background: rgba(0,34,68,0.5);
             display: flex;
-            align-items: center;
-            justify-content: center;
+            /* Scroll-safe centering: a modal taller than the viewport (small screen,
+               browser zoom) can be scrolled within the overlay and never clips its
+               buttons. margin:auto on the child centers it when there is room and
+               falls back to top-aligned + scrollable when there isn't. */
+            overflow-y: auto;
+            padding: 24px 16px;
             z-index: 10000;
             animation: fadeIn 0.15s ease;
         }
+        .modal-overlay > * { margin: auto; }
 
         @keyframes fadeIn {
             from { opacity: 0; }
@@ -1461,13 +1466,20 @@
         /* Checklist modal */
         .checklist-modal {
             max-width: 600px;
-            max-height: 80vh;
+            max-height: 85vh;
             display: flex;
             flex-direction: column;
         }
+        /* The body is the single scroll region: header + actions stay pinned,
+           the facility list scrolls inside it. */
+        .checklist-modal .modal-body {
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow-y: auto;
+            margin-bottom: 0;
+        }
 
         .checklist-container {
-            max-height: 350px;
             overflow-y: auto;
             border: 1px solid var(--neutral-200);
             border-radius: var(--radius-sm);
@@ -5881,13 +5893,14 @@
                 else if (currentFilter === 'other') document.getElementById('otherFilter').classList.add('active');
                 
                 // Toggle the reference-quarter selector. Show it not only on the
-                // read-only "previous" diff, but on the tabs where the "Rétablir"
-                // suggestions live (QoQ / Missing / all) so the analyst can pick which
-                // quarter those suggestions compare against.
+                // read-only "previous" diff, but on every tab where previous-quarter
+                // context is used: the "Rétablir" suggestions (QoQ / Missing / all) and
+                // the per-field previous-quarter hints in the OtherChecks correction modal.
                 const qSelector = document.getElementById('quarterSelector');
                 if (showPreviousQuarter &&
                     (currentFilter === 'previous' || currentFilter === 'qoq' ||
-                     currentFilter === 'missing' || currentFilter === 'all')) {
+                     currentFilter === 'missing' || currentFilter === 'all' ||
+                     currentFilter === 'other')) {
                     qSelector.classList.add('active');
                 } else {
                     qSelector.classList.remove('active');
