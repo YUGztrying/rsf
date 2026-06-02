@@ -5262,8 +5262,150 @@
         }
 
         // ═══════════════════════════════════════════════════
-        // OTHERCHECKS HELPERS: Bulk ignore + View CQR row
+        // OTHERCHECKS HELPERS: Bulk correct + Bulk ignore + View CQR row
         // ═══════════════════════════════════════════════════
+
+        // Multi-select bulk correction for OtherChecks: pick several facilities flagged
+        // on the SAME check and, in one pass, set a chosen CQR column to a value and/or
+        // attach a comment — instead of opening each facility's modal one by one.
+        // This is the OtherChecks analogue of "Appliquer à tout" and the main time-saver
+        // analysts asked for. The comment is filed under othercheck-<check> so it both
+        // clears the card and lands in the OtherChecks section of the export.
+        function showOtherChecksBulkCorrectModal(issueColumn) {
+            // Untreated rows flagged on this check.
+            const targetRows = [];
+            otherChecksData.forEach(r => {
+                if (r.hasIssue && r.cells.some(c => c.isIssue && c.column === issueColumn)) {
+                    const k1 = `${r.excelRow}-other-${issueColumn}`;
+                    const k2 = `${r.excelRow}-othercheck-${issueColumn}`;
+                    if (!correctedProblems.has(k1) && !ignoredProblems.has(k1) &&
+                        !correctedProblems.has(k2) && !ignoredProblems.has(k2)) {
+                        targetRows.push(r.excelRow);
+                    }
+                }
+            });
+            if (targetRows.length === 0) { showNotification('Aucune facilité à corriger sur ce contrôle', 'info'); return; }
+
+            // Editable CQR columns (skip the read-only identity columns).
+            const idH   = currentQReportHeaders.find(h => looseNorm(h).includes('id emprunteur'));
+            const nomH  = currentQReportHeaders.find(h => looseNorm(h).includes("nom de l") || looseNorm(h).includes('emprunteur'));
+            const rangH = currentQReportHeaders.find(h => looseNorm(h).includes("rang d'inclusion") || looseNorm(h).includes('rang d'));
+            const skip = new Set([idH, nomH, rangH].filter(Boolean));
+            const editableCols = currentQReportHeaders.filter(h => h && !skip.has(h));
+
+            const overlay = document.createElement('div');
+            overlay.className = 'modal-overlay';
+
+            const colOptions = ['<option value="">— Ne modifier aucune colonne (commentaire seul) —</option>']
+                .concat(editableCols.map(c => `<option value="${c.replace(/"/g, '&quot;')}">${c.length > 70 ? c.substring(0,67)+'…' : c}</option>`))
+                .join('');
+
+            overlay.innerHTML = `
+                <div class="modal checklist-modal">
+                    <div class="modal-header">✏️ Corriger en lot — <span style="font-weight:400;font-size:13px">${issueColumn.length > 50 ? issueColumn.substring(0,47)+'…' : issueColumn}</span></div>
+                    <div class="modal-body">
+                        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px">
+                            <div style="flex:2;min-width:220px">
+                                <label style="display:block;font-size:11px;color:var(--neutral-700);font-weight:600;margin-bottom:4px">Colonne à corriger</label>
+                                <select id="ocBulkColumn" class="column-select">${colOptions}</select>
+                            </div>
+                            <div style="flex:1;min-width:140px">
+                                <label style="display:block;font-size:11px;color:var(--neutral-700);font-weight:600;margin-bottom:4px">Nouvelle valeur</label>
+                                <input type="text" id="ocBulkValue" class="column-select" placeholder="(valeur à appliquer)" disabled>
+                            </div>
+                        </div>
+                        <label style="display:block;font-size:11px;color:var(--neutral-700);font-weight:600;margin-bottom:4px">Commentaire (optionnel, appliqué à toutes)</label>
+                        <textarea id="ocBulkComment" rows="2" class="column-select" style="resize:vertical" placeholder="Commentaire commun..."></textarea>
+                        <div class="checklist-actions" style="margin-top:12px">
+                            <button id="ocBulkSelectAll">✓ Tout sélectionner</button>
+                            <button id="ocBulkDeselectAll">✗ Tout désélectionner</button>
+                        </div>
+                        <div class="checklist-container" id="ocBulkList"></div>
+                        <div class="checklist-selected-count"><span id="ocBulkCount">0</span> / ${targetRows.length} sélectionnée(s)</div>
+                    </div>
+                    <div class="modal-actions">
+                        <button class="modal-btn secondary" id="ocBulkCancel">Annuler</button>
+                        <button class="modal-btn primary" id="ocBulkApply">Appliquer</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+
+            const colSel = overlay.querySelector('#ocBulkColumn');
+            const valInp = overlay.querySelector('#ocBulkValue');
+            const listEl = overlay.querySelector('#ocBulkList');
+
+            // Render the facility checklist; each row shows the chosen column's current value.
+            function renderList() {
+                const col = colSel.value;
+                listEl.innerHTML = targetRows.map((rowNum, i) => {
+                    const f = allFacilities.find(ff => ff.excelRow === rowNum);
+                    const rank = (f && rangH) ? (f[rangH] || 'N/A') : 'N/A';
+                    const nom = (f && nomH) ? (f[nomH] || '') : '';
+                    const cur = (col && f && f[col] != null && f[col] !== '') ? f[col].toString() : (col ? '(vide)' : '');
+                    const curTxt = col ? ` — <span style="color:var(--neutral-700)">${col.length>28?col.substring(0,25)+'…':col}: <strong>${cur}</strong></span>` : '';
+                    return `<div class="checklist-item">
+                        <input type="checkbox" data-row="${rowNum}" id="ocb-${i}" checked>
+                        <div class="checklist-item-info">
+                            <span class="checklist-item-rank">Rang ${rank}</span>
+                            <span class="checklist-item-value">${nom || ('Ligne ' + rowNum)}${curTxt}</span>
+                        </div>
+                    </div>`;
+                }).join('');
+                listEl.querySelectorAll('input[type=checkbox]').forEach(cb => cb.addEventListener('change', updateCount));
+                updateCount();
+            }
+            function updateCount() {
+                overlay.querySelector('#ocBulkCount').textContent = overlay.querySelectorAll('#ocBulkList input:checked').length;
+            }
+            colSel.addEventListener('change', () => { valInp.disabled = !colSel.value; renderList(); });
+            overlay.querySelector('#ocBulkSelectAll').addEventListener('click', () => { listEl.querySelectorAll('input').forEach(cb => cb.checked = true); updateCount(); });
+            overlay.querySelector('#ocBulkDeselectAll').addEventListener('click', () => { listEl.querySelectorAll('input').forEach(cb => cb.checked = false); updateCount(); });
+            overlay.querySelector('#ocBulkCancel').addEventListener('click', () => overlay.remove());
+            overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+            renderList();
+
+            overlay.querySelector('#ocBulkApply').addEventListener('click', () => {
+                const rows = Array.from(overlay.querySelectorAll('#ocBulkList input:checked')).map(cb => parseInt(cb.dataset.row));
+                if (rows.length === 0) { showNotification('Sélectionnez au moins une facilité', 'info'); return; }
+                const column = colSel.value;
+                const value = valInp.value;
+                const comment = overlay.querySelector('#ocBulkComment').value.trim();
+                if (!column && !comment) { showNotification('Choisissez une colonne à corriger ou saisissez un commentaire', 'info'); return; }
+                overlay.remove();
+                applyOtherChecksBulkCorrection(issueColumn, rows, column, value, comment);
+            });
+        }
+
+        function applyOtherChecksBulkCorrection(issueColumn, rows, column, value, comment) {
+            let count = 0;
+            rows.forEach(rowNum => {
+                const facility = allFacilities.find(f => f.excelRow === rowNum);
+                if (!facility) return;
+                // Optional value correction on a chosen CQR column.
+                if (column) {
+                    const oldVal = (facility[column] != null) ? facility[column].toString() : '';
+                    if (oldVal !== value) {
+                        facility[column] = value;
+                        recordModification(rowNum, column, oldVal, value); // individual undo, like acceptAllSimilarSuggestions
+                    }
+                }
+                // Comment + treated state, filed under the check so the card clears and
+                // the comment exports in the OtherChecks section.
+                if (!modifications.has(rowNum)) modifications.set(rowNum, { corrections: new Map(), comments: new Map() });
+                if (comment) modifications.get(rowNum).comments.set(`othercheck-${issueColumn}`, comment);
+                correctedProblems.add(`${rowNum}-othercheck-${issueColumn}`);
+                count++;
+            });
+            saveSession();
+            updateStatistics();
+            document.getElementById('tableHead').innerHTML = '';
+            document.getElementById('tableBody').innerHTML = '';
+            displayOtherChecksSheet();
+            const what = column ? `"${column}" = "${value}"` : 'commentaire';
+            showNotification(`${count} facilité(s) traitée(s) en lot (${what})`, 'success');
+        }
+
         function showIgnoreAllOtherChecks(column) {
             // Find all rows in otherChecksData that have an issue on this column and are not corrected
             const targetRows = [];
@@ -5656,6 +5798,16 @@
                                 }
                             });
                             if (similarCount > 1) {
+                                const bulkFixBtn = document.createElement('button');
+                                bulkFixBtn.className = 'apply-to-all-btn';
+                                bulkFixBtn.style.background = 'var(--wb-navy)';
+                                bulkFixBtn.textContent = `✏️ Corriger en lot (${similarCount})`;
+                                bulkFixBtn.title = 'Sélectionner plusieurs facilités signalées sur ce contrôle et les corriger/commenter en une fois';
+                                bulkFixBtn.addEventListener('click', () => {
+                                    showOtherChecksBulkCorrectModal(issueColumn);
+                                });
+                                pHeader.appendChild(bulkFixBtn);
+
                                 const ignoreAllBtn = document.createElement('button');
                                 ignoreAllBtn.className = 'apply-to-all-btn';
                                 ignoreAllBtn.style.background = 'var(--neutral-500)';
