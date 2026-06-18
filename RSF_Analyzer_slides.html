@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>RSF Analyser — Slides</title>
+<style>
+  :root{--navy:#2C3E50;--green:#1E8E5A;--red:#C0392B;--gray:#666;--light:#F2F4F6;--ink:#333;--accent:#9FC5E8;}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:#dfe3e8;font-family:Calibri,'Segoe UI',Arial,sans-serif;color:var(--ink);
+       display:flex;flex-direction:column;align-items:center;gap:24px;padding:24px;}
+  .slide{width:1280px;height:720px;background:#fff;box-shadow:0 8px 30px rgba(0,0,0,.18);
+         position:relative;overflow:hidden;}
+  .bar{background:var(--navy);color:#fff;height:96px;display:flex;align-items:center;padding:0 58px;
+       font-size:30px;font-weight:700;}
+  .pad{padding:34px 58px;}
+  .headline{font-size:40px;font-weight:700;color:var(--navy);line-height:1.15;}
+  .ba{font-size:21px;margin-top:22px;}
+  .ba .before{color:var(--red);} .ba .now{color:var(--green);font-weight:700;margin-top:12px;}
+  .tiles{display:flex;gap:26px;margin-top:34px;}
+  .tile{flex:1;background:var(--light);border-radius:14px;padding:26px 18px;text-align:center;}
+  .tile .num{font-size:74px;font-weight:800;line-height:1;}
+  .tile .num.green{color:var(--green);} .tile .num.navy{color:var(--navy);}
+  .tile .lab{font-size:19px;color:var(--gray);margin-top:16px;}
+  .foot{position:absolute;bottom:26px;left:0;right:0;text-align:center;font-size:15px;color:var(--gray);}
+  .cols{display:flex;gap:48px;margin-top:8px;}
+  .col{flex:1;}
+  .col h3{font-size:25px;color:var(--navy);margin-bottom:16px;}
+  .col li{font-size:21px;line-height:1.5;margin-bottom:12px;list-style:none;padding-left:24px;position:relative;}
+  .col li::before{content:"•";color:var(--navy);position:absolute;left:4px;font-weight:700;}
+  .next{position:absolute;left:58px;right:58px;bottom:42px;background:var(--navy);color:#fff;
+        border-radius:14px;padding:20px 28px;}
+  .next .t{font-size:16px;font-weight:700;color:var(--accent);letter-spacing:.5px;}
+  .next .b{font-size:21px;margin-top:6px;}
+  @media print{
+    @page{size:1280px 720px;margin:0;}
+    body{background:#fff;padding:0;gap:0;}
+    .slide{box-shadow:none;page-break-after:always;}
+  }
+</style>
+</head>
+<body>
+
+  <!-- SLIDE 1 -->
+  <section class="slide">
+    <div class="bar">RSF Analyser — Quarterly Report Monitoring</div>
+    <div class="pad">
+      <div class="headline">From &ldquo;it will slow us down&rdquo; to ~80% time saved</div>
+      <div class="ba">
+        <div class="before">✗&nbsp;&nbsp;Before — the team expected the tool to <b>add</b> work: up to +50% more time than Excel.</div>
+        <div class="now">✓&nbsp;&nbsp;Now — ~80% time saved, validated after two rounds of iteration with the team.</div>
+      </div>
+      <div class="tiles">
+        <div class="tile"><div class="num green">~80%</div><div class="lab">Time saved vs. manual correction</div></div>
+        <div class="tile"><div class="num navy">~90%</div><div class="lab">Tool completion — all tester feedback addressed</div></div>
+        <div class="tile"><div class="num navy">2&times;</div><div class="lab">Projects a Portfolio Officer can handle</div></div>
+      </div>
+    </div>
+    <div class="foot">Phase 1 — live &amp; validated&nbsp;&nbsp;·&nbsp;&nbsp;data stays in your browser&nbsp;&nbsp;·&nbsp;&nbsp;original file never modified</div>
+  </section>
+
+  <!-- SLIDE 2 -->
+  <section class="slide">
+    <div class="bar">What changed — and what's next</div>
+    <div class="pad">
+      <div class="cols">
+        <div class="col">
+          <h3>What we did</h3>
+          <ul>
+            <li>Bulk corrections across many facilities in one click</li>
+            <li>Automatic calculation of arrears days (jours d'impayé)</li>
+            <li>Quarter-over-quarter: previous values shown inline, restore in one click</li>
+            <li>Clean export — file stays intact (formats &amp; formulas preserved)</li>
+          </ul>
+        </div>
+        <div class="col">
+          <h3>What it means</h3>
+          <ul>
+            <li>Officers review exceptions only — not every row</li>
+            <li>Juniors can process reports under supervision</li>
+            <li>&asymp;2&times; projects per Portfolio Officer</li>
+            <li>Reports ready to share with IFC teams</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="next">
+      <div class="t">WHAT'S NEXT</div>
+      <div class="b">Broader support for all reporting formats + automated fixes&nbsp;&nbsp;→&nbsp;&nbsp;Phase 2: client self-service portal.</div>
+    </div>
+  </section>
+
+</body>
+</html>
