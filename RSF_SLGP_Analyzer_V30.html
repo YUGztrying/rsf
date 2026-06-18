@@ -2739,7 +2739,8 @@
             otherChecksHeaders = [];
             otherChecksData = [];
             currentPage = 1;
-            
+            currentColumnFilter = ''; // clear any column filter carried over from a previous file
+
             const currentQReportSheet = getSheetData(workbook, 'Current QReport');
             // Store actual sheet name for export
             actualCQRSheetName = workbook.SheetNames.find(name => {
@@ -5991,7 +5992,14 @@
                     qSelector.classList.remove('active');
                 }
                 
-                currentColumnFilter = '';
+                // Keep the column filter in sync with the per-tab dropdown. Each tab's
+                // "Filtrer par colonne" select keeps its own value, so restore the active
+                // tab's filter from it instead of blindly clearing — otherwise the dropdown
+                // still showed a column while the table had dropped the filter (out of sync).
+                if (currentFilter === 'missing') currentColumnFilter = document.getElementById('missingColumnSelect').value;
+                else if (currentFilter === 'qoq') currentColumnFilter = document.getElementById('qoqColumnSelect').value;
+                else if (currentFilter === 'other') currentColumnFilter = document.getElementById('otherColumnSelect').value;
+                else currentColumnFilter = '';
                 currentPage = 1;
                 displayData();
             });
